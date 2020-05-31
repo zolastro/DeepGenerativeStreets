@@ -1,4 +1,10 @@
-from tqdm import tqdm
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[116]:
+
+
+from tqdm.notebook import tqdm
 import torchvision.models as models
 from torch.nn.utils.rnn import pack_padded_sequence
 
@@ -20,6 +26,10 @@ import csv
 import os
 import math
 import cv2
+
+
+# In[117]:
+
 
 class UnetSkipConnectionBlock(nn.Module):
     def __init__(self, outer_nf, inner_nf, input_nf=None, outermost=False, innermost=False,
@@ -69,20 +79,28 @@ class UnetSkipConnectionBlock(nn.Module):
         else:
             return torch.cat([x, self.model(x)], 1)
 
+
+# In[118]:
+
+
 class UnetGenerator(nn.Module):
     def __init__(self, c_input, c_output, n_downsampling, n_filters,
                 norm_layer=nn.BatchNorm2d, use_dropout=False):
         super(UnetGenerator, self).__init__()
         unet_block = UnetSkipConnectionBlock(n_filters*8, n_filters*8, input_nf=None, submodule=None, norm_layer = norm_layer, innermost=True)
         for i in range(n_downsampling - 5):
-            unet_block = UnetSkipConnectionBlock(n_filters*8, n_filters*8, input_nf=None, submodule=unet_block, norm_layer = norm_layer)
-        unet_block = UnetSkipConnectionBlock(n_filters*4, n_filters*8, input_nf=None, submodule=unet_block, norm_layer = norm_layer)
-        unet_block = UnetSkipConnectionBlock(n_filters*2, n_filters*4, input_nf=None, submodule=unet_block, norm_layer = norm_layer)
-        unet_block = UnetSkipConnectionBlock(n_filters, n_filters*2, input_nf=None, submodule=unet_block, norm_layer = norm_layer)
-        self.model = UnetSkipConnectionBlock(c_output, n_filters, input_nf=c_input, submodule=unet_block, norm_layer = norm_layer, outermost=True)
+            unet_block = UnetSkipConnectionBlock(n_filters*8, n_filters*8, input_nf=None, submodule=unet_block, norm_layer = norm_layer, use_dropout=use_dropout)
+        unet_block = UnetSkipConnectionBlock(n_filters*4, n_filters*8, input_nf=None, submodule=unet_block, norm_layer = norm_layer, use_dropout=use_dropout)
+        unet_block = UnetSkipConnectionBlock(n_filters*2, n_filters*4, input_nf=None, submodule=unet_block, norm_layer = norm_layer, use_dropout=use_dropout)
+        unet_block = UnetSkipConnectionBlock(n_filters, n_filters*2, input_nf=None, submodule=unet_block, norm_layer = norm_layer, use_dropout=use_dropout)
+        self.model = UnetSkipConnectionBlock(c_output, n_filters, input_nf=c_input, submodule=unet_block, norm_layer = norm_layer, outermost=True, use_dropout=use_dropout)
         
     def forward(self, x):
         return self.model(x)
+
+
+# In[119]:
+
 
 class NLayerDiscriminator(nn.Module):
     def __init__(self, c_input, n_filters, n_layers, norm_layer=nn.BatchNorm2d):
@@ -116,6 +134,10 @@ class NLayerDiscriminator(nn.Module):
     def forward(self, input):
         """Standard forward."""
         return self.model(input)
+
+
+# In[120]:
+
 
 class GANLoss(nn.Module):
     """Define different GAN objectives.
@@ -178,6 +200,10 @@ class GANLoss(nn.Module):
                 loss = prediction.mean()
         return loss
 
+
+# In[121]:
+
+
 class Pix2Pix(nn.Module):
     def __init__(self, opt):
         super(Pix2Pix, self).__init__()
@@ -198,8 +224,6 @@ class Pix2Pix(nn.Module):
         self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt['lr'], betas=(opt['beta1'], 0.999))
         self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt['lr'], betas=(opt['beta1'], 0.999))
 
-        self.model_names = ['G', 'D']
-        self.save_dir= './results/'
         if len(self.gpu_ids) > 0:
             assert(torch.cuda.is_available())
             self.netG.to(self.gpu_ids[0])
@@ -208,22 +232,6 @@ class Pix2Pix(nn.Module):
             self.netD = torch.nn.DataParallel(self.netD, self.gpu_ids)
         
 
-    def save_networks(self, epoch):
-        """Save all the networks to the disk.
-        Parameters:
-            epoch (int) -- current epoch; used in the file name '%s_net_%s.pth' % (epoch, name)
-        """
-        for name in self.model_names:
-            if isinstance(name, str):
-                save_filename = '%s_net_%s.pth' % (epoch, name)
-                save_path = os.path.join(self.save_dir, save_filename)
-                net = getattr(self, 'net' + name)
-
-                if len(self.gpu_ids) > 0 and torch.cuda.is_available():
-                    torch.save(net.module.cpu().state_dict(), save_path)
-                    net.cuda(self.gpu_ids[0])
-                else:
-                    torch.save(net.cpu().state_dict(), save_path)
 
     def forward(self, x):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
@@ -243,21 +251,9 @@ class Pix2Pix(nn.Module):
                 for param in net.parameters():
                     param.requires_grad = requires_grad
 
-opt = {
-    'gpu_ids': [0],
-    'isTrain': True,
-    'use_dropout': False,
-    'c_input': 3,
-    'c_output': 3,
-    'n_downsampling': 3,
-    'nd_filters': 64,
-    'ng_filters': 64,
-    'nd_layers': 3,
-    'lr':0.0002,
-    'beta1': 0.5,
-    'lambda_L1': 100
-}
-model = Pix2Pix(opt)
+
+# In[123]:
+
 
 import os
 def get_meta(root_dir):
@@ -270,11 +266,16 @@ def get_meta(root_dir):
             paths.append(entry.path)
     return paths
 
-# root_dir_A = "/nobackup/sc19adpm/DeepStreetsData/trainA/"
-# root_dir_B = "/nobackup/sc19adpm/DeepStreetsData/trainB/"
 
-root_dir_A = "./data/trainA/"
-root_dir_B = "./data/trainB/"
+# In[124]:
+
+root_dir_A = "/nobackup/sc19adpm/DeepStreetsData/trainA/"
+root_dir_B = "/nobackup/sc19adpm/DeepStreetsData/trainB/"
+
+# root_dir_A = "./data/trainA/"
+# root_dir_B = "./data/trainB/"
+
+
 
 paths_A = get_meta(root_dir_A)
 paths_B = get_meta(root_dir_B)
@@ -285,6 +286,64 @@ data = {
 }
 data_df = pd.DataFrame(data, columns=['A', 'B'])
 data_df = data_df.sample(frac=1).reset_index(drop=True)
+
+
+# In[125]:
+
+
+data_df.head()
+
+
+# In[126]:
+
+
+def compute_img_mean_std(image_paths):
+    """
+        Author: @xinruizhuang. Computing the mean and std of three channel on the whole dataset,
+        first we should normalize the image from 0-255 to 0-1
+    """
+
+    img_h, img_w = 256, 256
+    imgs = []
+    means, stdevs = [], []
+
+    for i in tqdm(range(len(image_paths))):
+        img = cv2.imread(image_paths[i])
+        img = cv2.resize(img, (img_h, img_w))
+        imgs.append(img)
+
+    imgs = np.stack(imgs, axis=3)
+    print(imgs.shape)
+
+    imgs = imgs.astype(np.float32) / 255.
+
+    for i in range(3):
+        pixels = imgs[:, :, i, :].ravel()  # resize to one row
+        means.append(np.mean(pixels))
+        stdevs.append(np.std(pixels))
+
+    means.reverse()  # BGR --> RGB
+    stdevs.reverse()
+
+    print("normMean = {}".format(means))
+    print("normStd = {}".format(stdevs))
+    return means, stdevs
+
+
+# In[127]:
+
+
+#norm_mean_A, norm_std_A = compute_img_mean_std(paths_A)
+
+
+# In[128]:
+
+
+#norm_mean_B, norm_std_B = compute_img_mean_std(paths_B)
+
+
+# In[129]:
+
 
 from PIL import Image
 import cv2
@@ -304,6 +363,11 @@ class Streets(Dataset):
         x = self.transform_A(x)
         y = self.transform_B(y)
         return x, y 
+        
+
+
+# In[130]:
+
 
 data_transform_A = transforms.Compose([
         transforms.ToTensor(),
@@ -315,6 +379,10 @@ data_transform_B = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
+
+
+# In[131]:
+
 
 train_split = 0.70 # Defines the ratio of train/valid/test data.
 valid_split = 0.10
@@ -341,10 +409,17 @@ ins_dataset_test = Streets(
 )
 
 
-batch_size = 32
+# In[132]:
+
+
+batch_size = 1
 train_loader = DataLoader(dataset=ins_dataset_train, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(dataset=ins_dataset_test, batch_size=batch_size, shuffle=False)
 valid_loader = DataLoader(dataset=ins_dataset_valid, batch_size=batch_size, shuffle=False)
+
+
+# In[133]:
+
 
 def tensor2im(input_image, imtype=np.uint8):
     """"Converts a Tensor array into a numpy image array.
@@ -365,6 +440,36 @@ def tensor2im(input_image, imtype=np.uint8):
         image_numpy = input_image
     return image_numpy.astype(imtype)
 
+
+# In[136]:
+
+
+opt = {
+    'gpu_ids': [0],
+    'isTrain': True,
+    'use_dropout': True,
+    'c_input': 3,
+    'c_output': 3,
+    'n_downsampling': 8,
+    'nd_filters': 64,
+    'ng_filters': 64,
+    'nd_layers': 3,
+    'lr':0.0002,
+    'beta1': 0.5,
+    'lambda_L1': 100
+}
+model = Pix2Pix(opt)
+
+
+# In[137]:
+
+
+print(model)
+
+
+# In[ ]:
+
+
 # Train the model
 train_loss_list = []
 train_acc_list = []
@@ -379,6 +484,7 @@ for epoch in range(num_epochs):
         targets = targets.to(model.device)
         # Run the forward pass
         outputs = model(inputs)
+
         # update D
         model.set_requires_grad(model.netD, True)  # enable backprop for D
         model.optimizer_D.zero_grad()     # set D's gradients to zero
@@ -419,10 +525,7 @@ for epoch in range(num_epochs):
         
     print('Epoch [{}/{}], Loss_D: {:.4f},  Loss_G: {:.4f}'
               .format(epoch + 1, num_epochs, loss_D_list[i],  loss_G_list[i]))
-    if (epoch + 1) % 10 == 0:
-        save_suffix = 'epoch_{}'.format(epoch + 1)
-        model.save_networks(save_suffix)
-
+    if epoch % 10 == 0:
         img_A = Image.open(paths_A[600])
         img = data_transform_A(img_A)
         img = torch.from_numpy(np.expand_dims(img, axis=0))
@@ -432,4 +535,7 @@ for epoch in range(num_epochs):
         img_B_real = Image.open(paths_B[600])
         img = np.concatenate((img_A, img_B_fake, img_B_real), axis=1) 
         plt.imshow(img)
-        plt.imsave('./results/{}.jpg'.format(epoch + 1), img)
+        plt.show()
+        plt.imsave('results/{}.jpg'.format(epoch), img)
+
+
