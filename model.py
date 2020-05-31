@@ -4,7 +4,7 @@
 # In[116]:
 
 
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 import torchvision.models as models
 from torch.nn.utils.rnn import pack_padded_sequence
 
