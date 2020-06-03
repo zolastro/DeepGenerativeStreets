@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[116]:
+# In[47]:
 
 
-from tqdm import tqdm
 import torchvision.models as models
 from torch.nn.utils.rnn import pack_padded_sequence
 
@@ -14,6 +13,8 @@ import torch.optim as optim
 import torch.nn as nn
 import torchvision.transforms as transforms
 from  torch.utils.data import Dataset, DataLoader
+from torch.optim import lr_scheduler
+
 
 from sklearn.metrics import confusion_matrix
 from skimage import io, transform
@@ -28,7 +29,22 @@ import math
 import cv2
 
 
-# In[117]:
+# In[48]:
+
+
+is_notebook = True
+
+is_notebook = False
+# In[50]:
+
+
+if is_notebook:
+    from tqdm.notebook import tqdm
+else:
+    from tqdm import tqdm
+
+
+# In[4]:
 
 
 class UnetSkipConnectionBlock(nn.Module):
@@ -80,7 +96,7 @@ class UnetSkipConnectionBlock(nn.Module):
             return torch.cat([x, self.model(x)], 1)
 
 
-# In[118]:
+# In[5]:
 
 
 class UnetGenerator(nn.Module):
@@ -99,7 +115,7 @@ class UnetGenerator(nn.Module):
         return self.model(x)
 
 
-# In[119]:
+# In[6]:
 
 
 class NLayerDiscriminator(nn.Module):
@@ -136,7 +152,7 @@ class NLayerDiscriminator(nn.Module):
         return self.model(input)
 
 
-# In[120]:
+# In[7]:
 
 
 class GANLoss(nn.Module):
@@ -201,7 +217,7 @@ class GANLoss(nn.Module):
         return loss
 
 
-# In[121]:
+# In[41]:
 
 
 class Pix2Pix(nn.Module):
@@ -223,7 +239,16 @@ class Pix2Pix(nn.Module):
 
         self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt['lr'], betas=(opt['beta1'], 0.999))
         self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt['lr'], betas=(opt['beta1'], 0.999))
+        
+        def lambda_rule(epoch):
+            lr_l = 1.0 - max(0, epoch + opt['epoch_count'] - opt['n_epochs']) / float(opt['n_epochs_decay'] + 1)
+            return lr_l
+        
+        self.scheduler_G = lr_scheduler.LambdaLR(self.optimizer_G, lr_lambda=lambda_rule)
+        self.scheduler_D = lr_scheduler.LambdaLR(self.optimizer_D, lr_lambda=lambda_rule)
 
+        
+        
         if len(self.gpu_ids) > 0:
             assert(torch.cuda.is_available())
             self.netG.to(self.gpu_ids[0])
@@ -250,9 +275,13 @@ class Pix2Pix(nn.Module):
             if net is not None:
                 for param in net.parameters():
                     param.requires_grad = requires_grad
+                    
+    def update_learning_rate(self):
+        self.scheduler_G.step()
+        self.scheduler_D.step()
 
 
-# In[123]:
+# In[36]:
 
 
 import os
@@ -267,15 +296,15 @@ def get_meta(root_dir):
     return paths
 
 
-# In[124]:
-
-root_dir_A = "/nobackup/sc19adpm/DeepStreetsData/trainA/"
-root_dir_B = "/nobackup/sc19adpm/DeepStreetsData/trainB/"
-
-# root_dir_A = "./data/trainA/"
-# root_dir_B = "./data/trainB/"
+# In[52]:
 
 
+if is_notebook:
+    root_dir_A = "./data/trainA/"
+    root_dir_B = "./data/trainB/"
+else:
+    root_dir_A = "/nobackup/sc19adpm/DeepStreetsData/trainA/"
+    root_dir_B = "/nobackup/sc19adpm/DeepStreetsData/trainB/"
 
 paths_A = get_meta(root_dir_A)
 paths_B = get_meta(root_dir_B)
@@ -288,13 +317,13 @@ data_df = pd.DataFrame(data, columns=['A', 'B'])
 data_df = data_df.sample(frac=1).reset_index(drop=True)
 
 
-# In[125]:
+# In[25]:
 
 
 data_df.head()
 
 
-# In[126]:
+# In[26]:
 
 
 def compute_img_mean_std(image_paths):
@@ -330,19 +359,19 @@ def compute_img_mean_std(image_paths):
     return means, stdevs
 
 
-# In[127]:
+# In[27]:
 
 
 #norm_mean_A, norm_std_A = compute_img_mean_std(paths_A)
 
 
-# In[128]:
+# In[28]:
 
 
 #norm_mean_B, norm_std_B = compute_img_mean_std(paths_B)
 
 
-# In[129]:
+# In[29]:
 
 
 from PIL import Image
@@ -366,7 +395,7 @@ class Streets(Dataset):
         
 
 
-# In[130]:
+# In[30]:
 
 
 data_transform_A = transforms.Compose([
@@ -381,7 +410,7 @@ data_transform_B = transforms.Compose([
     ])
 
 
-# In[131]:
+# In[31]:
 
 
 train_split = 0.70 # Defines the ratio of train/valid/test data.
@@ -409,7 +438,7 @@ ins_dataset_test = Streets(
 )
 
 
-# In[132]:
+# In[32]:
 
 
 batch_size = 1
@@ -418,7 +447,7 @@ test_loader = DataLoader(dataset=ins_dataset_test, batch_size=batch_size, shuffl
 valid_loader = DataLoader(dataset=ins_dataset_valid, batch_size=batch_size, shuffle=False)
 
 
-# In[133]:
+# In[33]:
 
 
 def tensor2im(input_image, imtype=np.uint8):
@@ -441,7 +470,7 @@ def tensor2im(input_image, imtype=np.uint8):
     return image_numpy.astype(imtype)
 
 
-# In[136]:
+# In[42]:
 
 
 opt = {
@@ -456,18 +485,22 @@ opt = {
     'nd_layers': 3,
     'lr':0.0002,
     'beta1': 0.5,
-    'lambda_L1': 100
+    'lambda_L1': 100,
+    'n_epochs': 100,
+    'n_epochs_decay': 100,
+    'epoch_count': 1,
+    
 }
 model = Pix2Pix(opt)
 
 
-# In[137]:
+# In[43]:
 
 
 print(model)
 
 
-# In[ ]:
+# In[44]:
 
 
 # Train the model
@@ -537,5 +570,4 @@ for epoch in range(num_epochs):
         plt.imshow(img)
         plt.show()
         plt.imsave('results/{}.jpg'.format(epoch), img)
-
 
