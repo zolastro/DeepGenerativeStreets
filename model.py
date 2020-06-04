@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[47]:
+# In[ ]:
 
 
 import torchvision.models as models
@@ -29,13 +29,13 @@ import math
 import cv2
 
 
-# In[48]:
+# In[ ]:
 
 
 is_notebook = True
 
 is_notebook = False
-# In[50]:
+# In[ ]:
 
 
 if is_notebook:
@@ -44,7 +44,7 @@ else:
     from tqdm import tqdm
 
 
-# In[4]:
+# In[ ]:
 
 
 class UnetSkipConnectionBlock(nn.Module):
@@ -96,7 +96,7 @@ class UnetSkipConnectionBlock(nn.Module):
             return torch.cat([x, self.model(x)], 1)
 
 
-# In[5]:
+# In[ ]:
 
 
 class UnetGenerator(nn.Module):
@@ -115,7 +115,7 @@ class UnetGenerator(nn.Module):
         return self.model(x)
 
 
-# In[6]:
+# In[ ]:
 
 
 class NLayerDiscriminator(nn.Module):
@@ -152,7 +152,7 @@ class NLayerDiscriminator(nn.Module):
         return self.model(input)
 
 
-# In[7]:
+# In[ ]:
 
 
 class GANLoss(nn.Module):
@@ -217,7 +217,7 @@ class GANLoss(nn.Module):
         return loss
 
 
-# In[41]:
+# In[ ]:
 
 
 class Pix2Pix(nn.Module):
@@ -281,7 +281,7 @@ class Pix2Pix(nn.Module):
         self.scheduler_D.step()
 
 
-# In[36]:
+# In[ ]:
 
 
 import os
@@ -296,7 +296,7 @@ def get_meta(root_dir):
     return paths
 
 
-# In[52]:
+# In[ ]:
 
 
 if is_notebook:
@@ -317,13 +317,13 @@ data_df = pd.DataFrame(data, columns=['A', 'B'])
 data_df = data_df.sample(frac=1).reset_index(drop=True)
 
 
-# In[25]:
+# In[ ]:
 
 
 data_df.head()
 
 
-# In[26]:
+# In[ ]:
 
 
 def compute_img_mean_std(image_paths):
@@ -359,19 +359,19 @@ def compute_img_mean_std(image_paths):
     return means, stdevs
 
 
-# In[27]:
+# In[ ]:
 
 
 #norm_mean_A, norm_std_A = compute_img_mean_std(paths_A)
 
 
-# In[28]:
+# In[ ]:
 
 
 #norm_mean_B, norm_std_B = compute_img_mean_std(paths_B)
 
 
-# In[29]:
+# In[ ]:
 
 
 from PIL import Image
@@ -395,7 +395,7 @@ class Streets(Dataset):
         
 
 
-# In[30]:
+# In[ ]:
 
 
 data_transform_A = transforms.Compose([
@@ -410,7 +410,7 @@ data_transform_B = transforms.Compose([
     ])
 
 
-# In[31]:
+# In[ ]:
 
 
 train_split = 0.70 # Defines the ratio of train/valid/test data.
@@ -438,7 +438,7 @@ ins_dataset_test = Streets(
 )
 
 
-# In[32]:
+# In[ ]:
 
 
 batch_size = 1
@@ -447,7 +447,7 @@ test_loader = DataLoader(dataset=ins_dataset_test, batch_size=batch_size, shuffl
 valid_loader = DataLoader(dataset=ins_dataset_valid, batch_size=batch_size, shuffle=False)
 
 
-# In[33]:
+# In[ ]:
 
 
 def tensor2im(input_image, imtype=np.uint8):
@@ -470,7 +470,7 @@ def tensor2im(input_image, imtype=np.uint8):
     return image_numpy.astype(imtype)
 
 
-# In[42]:
+# In[ ]:
 
 
 opt = {
@@ -494,13 +494,13 @@ opt = {
 model = Pix2Pix(opt)
 
 
-# In[43]:
+# In[ ]:
 
 
 print(model)
 
 
-# In[44]:
+# In[ ]:
 
 
 # Train the model
@@ -555,10 +555,10 @@ for epoch in range(num_epochs):
         
         
         # Track the accuracy
-        
+    model.update_learning_rate()    
     print('Epoch [{}/{}], Loss_D: {:.4f},  Loss_G: {:.4f}'
               .format(epoch + 1, num_epochs, loss_D_list[i],  loss_G_list[i]))
-    if epoch % 10 == 0:
+    if epoch % 5 == 0:
         img_A = Image.open(paths_A[600])
         img = data_transform_A(img_A)
         img = torch.from_numpy(np.expand_dims(img, axis=0))
