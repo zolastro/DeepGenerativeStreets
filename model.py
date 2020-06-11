@@ -6,11 +6,13 @@
 
 import torchvision.models as models
 from torch.nn.utils.rnn import pack_padded_sequence
+from IPython.display import clear_output
 
 import torch
 import torchvision
 import torch.optim as optim
 import torch.nn as nn
+from torch.nn import init
 import torchvision.transforms as transforms
 from  torch.utils.data import Dataset, DataLoader
 from torch.optim import lr_scheduler
@@ -26,6 +28,7 @@ import numpy as np
 import csv
 import os
 import math
+import random
 import cv2
 
 
@@ -42,6 +45,52 @@ if is_notebook:
     from tqdm.notebook import tqdm
 else:
     from tqdm import tqdm
+
+
+# In[ ]:
+
+
+def init_weights(net, init_type='normal', init_gain=0.02):
+    """Initialize network weights.
+
+    Parameters:
+        net (network)   -- network to be initialized
+        init_type (str) -- the name of an initialization method: normal | xavier | kaiming | orthogonal
+        init_gain (float)    -- scaling factor for normal, xavier and orthogonal.
+
+    We use 'normal' in the original pix2pix and CycleGAN paper. But xavier and kaiming might
+    work better for some applications. Feel free to try yourself.
+    """
+    def init_func(m):  # define the initialization function
+        classname = m.__class__.__name__
+        if hasattr(m, 'weight') and (classname.find('Conv') != -1 or classname.find('Linear') != -1):
+            init.normal_(m.weight.data, 0.0, init_gain)
+            if hasattr(m, 'bias') and m.bias is not None:
+                init.constant_(m.bias.data, 0.0)
+        elif classname.find('BatchNorm2d') != -1:  # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
+            init.normal_(m.weight.data, 1.0, init_gain)
+            init.constant_(m.bias.data, 0.0)
+
+    print('initialize network with %s' % init_type)
+    net.apply(init_func)  # apply the initialization function <init_func>
+
+
+def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
+    """Initialize a network: 1. register CPU/GPU device (with multi-GPU support); 2. initialize the network weights
+    Parameters:
+        net (network)      -- the network to be initialized
+        init_type (str)    -- the name of an initialization method: normal | xavier | kaiming | orthogonal
+        gain (float)       -- scaling factor for normal, xavier and orthogonal.
+        gpu_ids (int list) -- which GPUs the network runs on: e.g., 0,1,2
+
+    Return an initialized network.
+    """
+    if len(gpu_ids) > 0:
+        assert(torch.cuda.is_available())
+        net.to(gpu_ids[0])
+        net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs
+    init_weights(net, init_type, init_gain=init_gain)
+    return net
 
 
 # In[ ]:
@@ -106,10 +155,10 @@ class UnetGenerator(nn.Module):
         unet_block = UnetSkipConnectionBlock(n_filters*8, n_filters*8, input_nf=None, submodule=None, norm_layer = norm_layer, innermost=True)
         for i in range(n_downsampling - 5):
             unet_block = UnetSkipConnectionBlock(n_filters*8, n_filters*8, input_nf=None, submodule=unet_block, norm_layer = norm_layer, use_dropout=use_dropout)
-        unet_block = UnetSkipConnectionBlock(n_filters*4, n_filters*8, input_nf=None, submodule=unet_block, norm_layer = norm_layer, use_dropout=use_dropout)
-        unet_block = UnetSkipConnectionBlock(n_filters*2, n_filters*4, input_nf=None, submodule=unet_block, norm_layer = norm_layer, use_dropout=use_dropout)
-        unet_block = UnetSkipConnectionBlock(n_filters, n_filters*2, input_nf=None, submodule=unet_block, norm_layer = norm_layer, use_dropout=use_dropout)
-        self.model = UnetSkipConnectionBlock(c_output, n_filters, input_nf=c_input, submodule=unet_block, norm_layer = norm_layer, outermost=True, use_dropout=use_dropout)
+        unet_block = UnetSkipConnectionBlock(n_filters*4, n_filters*8, input_nf=None, submodule=unet_block, norm_layer = norm_layer)
+        unet_block = UnetSkipConnectionBlock(n_filters*2, n_filters*4, input_nf=None, submodule=unet_block, norm_layer = norm_layer)
+        unet_block = UnetSkipConnectionBlock(n_filters, n_filters*2, input_nf=None, submodule=unet_block, norm_layer = norm_layer)
+        self.model = UnetSkipConnectionBlock(c_output, n_filters, input_nf=c_input, submodule=unet_block, norm_layer = norm_layer, outermost=True)
         
     def forward(self, x):
         return self.model(x)
@@ -230,10 +279,18 @@ class Pix2Pix(nn.Module):
 
         # Generator network
         self.use_dropout = opt['use_dropout']
-        self.netG = UnetGenerator(opt['c_input'], opt['c_output'], opt['n_downsampling'], opt['ng_filters'], nn.BatchNorm2d, self.use_dropout)
+        self.netG = UnetGenerator(opt['c_input'], opt['c_output'], opt['n_downsampling'], 
+                                  opt['ng_filters'], nn.BatchNorm2d, self.use_dropout)
 
         # Discriminator network
-        self.netD = NLayerDiscriminator(opt['c_input'] + opt['c_output'], opt['nd_filters'], opt['nd_layers'], nn.BatchNorm2d)
+        self.netD = NLayerDiscriminator(opt['c_input'] + opt['c_output'], opt['nd_filters'], 
+                                        opt['nd_layers'], nn.BatchNorm2d)
+
+        
+        
+        self.netD = init_net(self.netD, init_type='normal', init_gain=0.02, gpu_ids=self.gpu_ids)
+        self.netG = init_net(self.netG, init_type='normal', init_gain=0.02, gpu_ids=self.gpu_ids)
+        
         self.lossGAN = GANLoss('vanilla').to(self.device)
         self.lossL1 = torch.nn.L1Loss()
 
@@ -383,6 +440,7 @@ class Streets(Dataset):
         self.df = df
         self.transform_A = transform_A
         self.transform_B = transform_B
+        
     def __len__(self):
         return len(self.df)
     def __getitem__(self, index):
@@ -398,23 +456,57 @@ class Streets(Dataset):
 # In[ ]:
 
 
-data_transform_A = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
+def __crop(img, pos, size):
+    ow, oh = img.size
+    x1, y1 = pos
+    tw = th = size
+    if (ow > tw or oh > th):
+        return img.crop((x1, y1, x1 + tw, y1 + th))
+    return img
 
-# Should we use a transform for B too? (Yes, they do)
-data_transform_B = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
+def __flip(img, flip):
+    if flip:
+        return img.transpose(Image.FLIP_LEFT_RIGHT)
+    return img
 
 
 # In[ ]:
 
 
-train_split = 0.70 # Defines the ratio of train/valid/test data.
-valid_split = 0.10
+w = 256
+h = 256
+new_h = h
+new_w = w
+new_h = 256
+new_w = 256
+
+x = random.randint(0, np.maximum(0, new_w - 256))
+y = random.randint(0, np.maximum(0, new_h - 256))
+
+flip = random.random() > 0.5
+
+
+data_transform_A = transforms.Compose([
+        transforms.Resize((256,256), Image.BICUBIC),
+        transforms.Lambda(lambda img: __crop(img, (x, y), 256)),
+        transforms.Lambda(lambda img: __flip(img, flip)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+# Should we use a transform for B too? (Yes, they do)
+data_transform_B = transforms.Compose([
+        transforms.Resize((256,256), Image.BICUBIC),
+        transforms.Lambda(lambda img: __crop(img, (x, y), 256)),
+        transforms.Lambda(lambda img: __flip(img, flip)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+
+# In[ ]:
+
+
+train_split = 1 # Defines the ratio of train/valid/test data.
+valid_split = 0
 
 train_size = int(len(data_df)*train_split)
 valid_size = int(len(data_df)*valid_split)
@@ -522,7 +614,7 @@ for epoch in range(num_epochs):
         model.set_requires_grad(model.netD, True)  # enable backprop for D
         model.optimizer_D.zero_grad()     # set D's gradients to zero
         inputs_D_fake = torch.cat((inputs, outputs), 1)  # we use conditional GANs; we need to feed both input and output to the discriminator
-
+        
         # Fake; stop backprop to the generator by detaching fake_B
         
         outputs_D_fake = model.netD(inputs_D_fake.detach())
@@ -553,19 +645,29 @@ for epoch in range(num_epochs):
         loss_G.backward()
         model.optimizer_G.step()             # udpate G's weights
         
+        if (is_notebook) and (i % 100 == 0):
+            clear_output(wait=True)
+            test_inputs = outputs.cpu()
+            img_B_fake = tensor2im(test_inputs)
+            plt.figure(0) # Here's the part I need
+            plt.imshow(img_B_fake)
+            plt.show()
+            print('Epoch [{}/{}], Step [{}/{}] Loss_D: {:.4f},  Loss_G: {:.4f}'
+                  .format(epoch + 1, num_epochs, i+1, len(train_loader), loss_D_list[i],  loss_G_list[i]))
         
         # Track the accuracy
     model.update_learning_rate()    
     print('Epoch [{}/{}], Loss_D: {:.4f},  Loss_G: {:.4f}'
               .format(epoch + 1, num_epochs, loss_D_list[i],  loss_G_list[i]))
-    if epoch % 5 == 0:
-        img_A = Image.open(paths_A[600])
+    if (not is_notebook) and (epoch % 5 == 0):
+        idx = random.randint(0, len(paths_A))
+        img_A = Image.open(paths_A[idx])
         img = data_transform_A(img_A)
         img = torch.from_numpy(np.expand_dims(img, axis=0))
         img = img.to(model.device)
         out = model(img)
         img_B_fake = tensor2im(out)
-        img_B_real = Image.open(paths_B[600])
+        img_B_real = Image.open(paths_B[idx])
         img = np.concatenate((img_A, img_B_fake, img_B_real), axis=1) 
         plt.imshow(img)
         plt.show()
