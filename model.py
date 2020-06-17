@@ -4,6 +4,7 @@
 # In[1]:
 
 
+from __future__ import print_function
 import torchvision.models as models
 from torch.nn.utils.rnn import pack_padded_sequence
 from IPython.display import clear_output
@@ -53,7 +54,6 @@ else:
 
 
 """This module contains simple helper functions """
-from __future__ import print_function
 import torch
 import numpy as np
 from PIL import Image
