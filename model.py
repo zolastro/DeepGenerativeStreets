@@ -1372,8 +1372,8 @@ else:
     root_dir_A = "/nobackup/sc19adpm/DeepStreetsData/trainA/"
     root_dir_B = "/nobackup/sc19adpm/DeepStreetsData/trainB/"
 
-paths_A = get_meta(root_dir_A)[:100]
-paths_B = get_meta(root_dir_B)[:100]
+paths_A = get_meta(root_dir_A)
+paths_B = get_meta(root_dir_B)
 
 data = {
     'A': paths_A,
