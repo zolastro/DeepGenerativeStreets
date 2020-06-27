@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[20]:
+# In[22]:
 
 
 from __future__ import print_function
@@ -27,13 +27,13 @@ from  torch.utils.data import Dataset, DataLoader
 from torch.optim import lr_scheduler
 
 
-# In[21]:
+# In[23]:
 
 
 is_notebook = True
 
 is_notebook = False
-# In[22]:
+# In[24]:
 
 
 if is_notebook:
@@ -42,9 +42,7 @@ else:
     from tqdm import tqdm
 
 
-# ### Utils
-
-# In[23]:
+# In[25]:
 
 
 def tensor2im(input_image, imtype=np.uint8):
@@ -125,7 +123,7 @@ def get_option_setter(model_name):
     return model_class.modify_commandline_options
 
 
-# In[40]:
+# In[26]:
 
 
 class Pix2PixModel():
@@ -232,8 +230,8 @@ class Pix2PixModel():
     def setup(self, opt):
         if self.isTrain:
             self.schedulers = [get_scheduler(optimizer, opt) for optimizer in self.optimizers]
-        if not self.isTrain or opt.continue_train:
-            load_suffix = 'iter_%d' % opt.load_iter if opt.load_iter > 0 else opt.epoch
+        if opt.continue_train:
+            load_suffix = 'epoch%d' % opt.epoch_count
             self.load_networks(load_suffix)
         self.print_networks(opt.verbose)
 
@@ -321,7 +319,7 @@ class Pix2PixModel():
 
 # ### Models
 
-# In[41]:
+# In[27]:
 
 
 class Identity(nn.Module):
@@ -329,7 +327,7 @@ class Identity(nn.Module):
         return x
 
 
-# In[42]:
+# In[28]:
 
 
 def get_norm_layer(norm_type='instance'):
@@ -486,7 +484,7 @@ class NLayerDiscriminator(nn.Module):
         return self.model(input)
 
 
-# In[43]:
+# In[29]:
 
 
 import argparse
@@ -589,7 +587,7 @@ class BaseOptions():
         return self.opt
 
 
-# In[44]:
+# In[53]:
 
 
 class TrainOptions(BaseOptions):
@@ -615,7 +613,7 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--save_epoch_freq', type=int, default=5, help='frequency of saving checkpoints at the end of epochs')
         parser.add_argument('--save_by_iter', action='store_true', help='whether saves model by iteration')
         parser.add_argument('--continue_train', action='store_true', help='continue training: load the latest model')
-        parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
+        parser.add_argument('--epoch_count', type=int, default=0, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
         parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc')
         # training parameters
         parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs with the initial learning rate')
@@ -631,7 +629,7 @@ class TrainOptions(BaseOptions):
         return parser
 
 
-# In[45]:
+# In[31]:
 
 
 import os
@@ -646,7 +644,7 @@ def get_meta(root_dir):
     return paths
 
 
-# In[46]:
+# In[32]:
 
 
 if is_notebook:
@@ -667,13 +665,13 @@ data_df = pd.DataFrame(data, columns=['A', 'B'])
 data_df = data_df.sample(frac=1).reset_index(drop=True)
 
 
-# In[47]:
+# In[33]:
 
 
 data_df.head()
 
 
-# In[48]:
+# In[34]:
 
 
 from PIL import Image
@@ -698,7 +696,7 @@ class Streets(Dataset):
         
 
 
-# In[49]:
+# In[35]:
 
 
 def __crop(img, pos, size):
@@ -715,7 +713,7 @@ def __flip(img, flip):
     return img
 
 
-# In[50]:
+# In[36]:
 
 
 w = 256
@@ -747,7 +745,7 @@ data_transform_B = transforms.Compose([
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
 
-# In[51]:
+# In[37]:
 
 
 train_split = 1 # Defines the ratio of train/valid/test data.
@@ -775,7 +773,7 @@ ins_dataset_test = Streets(
 )
 
 
-# In[52]:
+# In[38]:
 
 
 batch_size = 1
@@ -784,25 +782,31 @@ test_loader = DataLoader(dataset=ins_dataset_test, batch_size=batch_size, shuffl
 valid_loader = DataLoader(dataset=ins_dataset_valid, batch_size=batch_size, shuffle=False)
 
 
-# In[53]:
+# In[39]:
 
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 opt = TrainOptions().parse()   # get training options
 
 
-# In[60]:
+# In[51]:
 
 
 model = Pix2PixModel(opt)
 model.setup(opt)
 
 
-# In[62]:
+# In[52]:
+
+
+opt.epoch_count
+
+
+# In[49]:
 
 
 num_epochs = 1000
-for epoch in range(num_epochs):
+for epoch in range(opt.epoch_count, num_epochs):
     loss_D_list = []
     loss_G_list = []
     acc_list = []
