@@ -25,7 +25,7 @@ from torch.nn import init
 import torchvision.transforms as transforms
 from  torch.utils.data import Dataset, DataLoader
 from torch.optim import lr_scheduler
-
+from collections import OrderedDict
 
 # In[23]:
 
@@ -797,9 +797,15 @@ model.setup(opt)
 
 
 # In[52]:
+def print_current_losses(epoch, iters, losses):
 
+    message = '(epoch: %d, iters: %d, time: %.3f, data: %.3f) ' % (epoch, iters)
+    for k, v in losses.items():
+        message += '%s: %.3f ' % (k, v)
 
-opt.epoch_count
+    print(message)  # print the message
+    with open('loss.txt', "a") as log_file:
+        log_file.write('%s\n' % message)  # save the message
 
 
 # In[49]:
@@ -815,6 +821,10 @@ for epoch in range(opt.epoch_count, num_epochs):
         model.set_input(inputs, targets)         # unpack data from dataset and apply preprocessing
         model.optimize_parameters()   # calculate loss functions, get gradients, update network weights
         model.forward()
+
+        if (i % 100 == 0):
+            losses = model.get_current_losses()
+            print_current_losses(epoch, i, losses)
         
         if (is_notebook) and (i % 100 == 0):
             clear_output(wait=True)
