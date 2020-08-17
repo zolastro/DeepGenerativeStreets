@@ -799,7 +799,7 @@ model.setup(opt)
 # In[52]:
 def print_current_losses(epoch, iters, losses):
 
-    message = '(epoch: %d, iters: %d, time: %.3f, data: %.3f) ' % (epoch, iters)
+    message = '(epoch: %d, iters: %d) ' % (epoch, iters)
     for k, v in losses.items():
         message += '%s: %.3f ' % (k, v)
 
